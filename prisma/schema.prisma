@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  brands    Brand[]
+  assets    Asset[]
+  posts     ScheduledPost[]
+}
+
+model Brand {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name      String
+  industry  String?
+  tone      String
+  voice     String?
+  keywords  String?
+  colors    String?
+  isActive  Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assets    Asset[]
+  posts     ScheduledPost[]
+}
+
+model Asset {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brandId   String?
+  brand     Brand?    @relation(fields: [brandId], references: [id])
+
+  type      AssetType
+  content   String    @db.Text
+  platform  String?
+  language  String?
+  style     String?
+  brief     String?   @db.Text
+  label     String?
+  tags      String[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model ScheduledPost {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brandId     String?
+  brand       Brand?   @relation(fields: [brandId], references: [id])
+
+  label       String
+  platform    String
+  scheduledAt DateTime
+  status      PostStatus @default(DRAFT)
+  assetId     String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum AssetType {
+  COPY
+  IMAGE_PROMPT
+  IMAGE
+}
+
+enum PostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+}
