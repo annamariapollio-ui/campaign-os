@@ -1,6 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
+export const maxDuration = 60; // Extend to 60s for Vercel Pro, 10s for Hobby
+
 async function generateWithGemini(prompt: string, apiKey: string) {
   const models = [
     "gemini-2.0-flash-preview-image-generation",
@@ -48,36 +50,36 @@ async function generateWithGemini(prompt: string, apiKey: string) {
   if (imagenData.predictions?.[0]?.bytesBase64Encoded) {
     return { image: imagenData.predictions[0].bytesBase64Encoded, mimeType: "image/png" };
   }
-
-  throw new Error(imagenData.error?.message || "Gemini image generation requires billing to be enabled. Please enable billing at console.cloud.google.com or switch to Replicate.");
+  throw new Error("Gemini image generation requires billing. Please enable at console.cloud.google.com or use Replicate.");
 }
 
-async function generateWithReplicate(prompt: string, apiKey: string, referenceImages: any[]) {
-  // Start prediction
-  const input: any = {
-    prompt,
-    width: 1024,
-    height: 1024,
-    num_outputs: 1,
-    guidance_scale: 7.5,
-    num_inference_steps: 30,
-  };
-
-  const startResponse = await fetch("https://api.replicate.com/v1/models/stability-ai/sdxl/predictions", {
+async function generateWithReplicate(prompt: string, apiKey: string) {
+  // Use fast SDXL-turbo model — generates in ~5 seconds
+  const response = await fetch("https://api.replicate.com/v1/models/bytedance/sdxl-lightning-4step/predictions", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      "Prefer": "wait=30",
+      "Prefer": "wait=55",
     },
-    body: JSON.stringify({ input }),
+    body: JSON.stringify({
+      input: {
+        prompt: prompt,
+        width: 1024,
+        height: 1024,
+        num_outputs: 1,
+        num_inference_steps: 4,
+        guidance_scale: 0,
+        scheduler: "K_EULER",
+      },
+    }),
   });
 
-  const prediction = await startResponse.json();
+  const prediction = await response.json();
 
   if (prediction.error) throw new Error(prediction.error);
 
-  // If already completed
+  // If completed immediately
   if (prediction.output?.[0]) {
     const imageUrl = prediction.output[0];
     const imgResponse = await fetch(imageUrl);
@@ -86,10 +88,12 @@ async function generateWithReplicate(prompt: string, apiKey: string, referenceIm
     return { image: base64, mimeType: "image/png" };
   }
 
-  // Poll for result
+  // Poll up to 50 seconds
   const predictionId = prediction.id;
-  for (let i = 0; i < 30; i++) {
-    await new Promise(r => setTimeout(r, 2000));
+  if (!predictionId) throw new Error("No prediction ID returned from Replicate.");
+
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 2500));
     const pollResponse = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
       headers: { "Authorization": `Bearer ${apiKey}` },
     });
@@ -102,10 +106,10 @@ async function generateWithReplicate(prompt: string, apiKey: string, referenceIm
       const base64 = Buffer.from(buffer).toString("base64");
       return { image: base64, mimeType: "image/png" };
     }
-    if (pollData.status === "failed") throw new Error(pollData.error || "Replicate generation failed");
+    if (pollData.status === "failed") throw new Error(pollData.error || "Replicate generation failed.");
   }
 
-  throw new Error("Replicate timed out. Please try again.");
+  throw new Error("Generation timed out. Please try again.");
 }
 
 export async function POST(req: NextRequest) {
@@ -113,7 +117,7 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { prompt, referenceImages = [], provider = "gemini" } = body;
+  const { prompt, provider = "replicate" } = body;
 
   if (!prompt) return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
 
@@ -121,7 +125,7 @@ export async function POST(req: NextRequest) {
     if (provider === "replicate") {
       const apiKey = process.env.REPLICATE_API_KEY;
       if (!apiKey) return NextResponse.json({ error: "Replicate API key not configured" }, { status: 500 });
-      const result = await generateWithReplicate(prompt, apiKey, referenceImages);
+      const result = await generateWithReplicate(prompt, apiKey);
       return NextResponse.json(result);
     } else {
       const apiKey = process.env.GEMINI_API_KEY;
