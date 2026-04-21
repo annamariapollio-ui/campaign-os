@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Brand } from "@/types";
+import { useLanguage } from "@/lib/language-context";
 
 const PLATFORMS = [
   { id: "instagram_post", label: "Instagram Post" },
@@ -14,7 +15,7 @@ const PLATFORMS = [
   { id: "ad_copy", label: "Ad Copy" },
 ];
 
-const LANGUAGES = ["English", "Italian", "French", "German", "Spanish", "Portuguese"];
+const COPY_LANGUAGES = ["English", "Italian", "French", "German", "Spanish", "Portuguese"];
 const LENGTHS = ["Short", "Medium", "Long"] as const;
 
 const C = {
@@ -24,6 +25,7 @@ const C = {
 };
 
 export default function CopyStudioPage() {
+  const { t } = useLanguage();
   const [brands, setBrands] = useState<Brand[]>([]);
   const [selectedBrandId, setSelectedBrandId] = useState<string>("");
   const [platform, setPlatform] = useState("instagram_post");
@@ -67,41 +69,34 @@ export default function CopyStudioPage() {
     await fetch("/api/assets", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "COPY",
-        content: result,
-        platform: platformLabel,
-        language,
-        brief,
-        brandId: selectedBrandId || undefined,
-        label: brief.slice(0, 40),
-      }),
+      body: JSON.stringify({ type: "COPY", content: result, platform: platformLabel, language, brief, brandId: selectedBrandId || undefined, label: brief.slice(0, 40) }),
     });
     setSaved(true);
   };
 
+  const lengthLabels = { Short: t.short, Medium: t.medium, Long: t.long };
+
   return (
     <div style={{ padding: 40 }}>
       <div style={{ marginBottom: 40 }}>
-        <div style={{ fontSize: 11, letterSpacing: 3, color: C.accent, marginBottom: 8 }}>AI COPYWRITING</div>
-        <h1 style={{ fontSize: 32, color: C.text, fontFamily: "Georgia, serif", fontWeight: 400, margin: 0 }}>Copy Studio</h1>
+        <div style={{ fontSize: 11, letterSpacing: 3, color: C.accent, marginBottom: 8 }}>{t.aiCopywriting}</div>
+        <h1 style={{ fontSize: 32, color: C.text, fontFamily: "Georgia, serif", fontWeight: 400, margin: 0 }}>{t.copyStudioTitle}</h1>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
-        {/* Left: Controls */}
         <div>
           {brands.length > 0 && (
             <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 11, color: C.textMuted, letterSpacing: 1.5, display: "block", marginBottom: 8 }}>BRAND PROFILE</label>
+              <label style={{ fontSize: 11, color: C.textMuted, letterSpacing: 1.5, display: "block", marginBottom: 8 }}>{t.brandProfile}</label>
               <select value={selectedBrandId} onChange={(e) => setSelectedBrandId(e.target.value)} style={{ width: "100%", background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13 }}>
-                <option value="">No brand selected</option>
+                <option value="">{t.noBrandSelected}</option>
                 {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </div>
           )}
 
           <div style={{ marginBottom: 20 }}>
-            <label style={{ fontSize: 11, color: C.textMuted, letterSpacing: 1.5, display: "block", marginBottom: 12 }}>PLATFORM</label>
+            <label style={{ fontSize: 11, color: C.textMuted, letterSpacing: 1.5, display: "block", marginBottom: 12 }}>{t.platform}</label>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {PLATFORMS.map((p) => (
                 <button key={p.id} onClick={() => setPlatform(p.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${platform === p.id ? C.accent : C.border}`, background: platform === p.id ? `${C.accent}20` : "transparent", color: platform === p.id ? C.accent : C.textSub, fontSize: 12, cursor: "pointer" }}>
@@ -113,17 +108,17 @@ export default function CopyStudioPage() {
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
             <div>
-              <label style={{ fontSize: 11, color: C.textMuted, letterSpacing: 1.5, display: "block", marginBottom: 8 }}>LANGUAGE</label>
+              <label style={{ fontSize: 11, color: C.textMuted, letterSpacing: 1.5, display: "block", marginBottom: 8 }}>{t.language}</label>
               <select value={language} onChange={(e) => setLanguage(e.target.value)} style={{ width: "100%", background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13 }}>
-                {LANGUAGES.map((l) => <option key={l}>{l}</option>)}
+                {COPY_LANGUAGES.map((l) => <option key={l}>{l}</option>)}
               </select>
             </div>
             <div>
-              <label style={{ fontSize: 11, color: C.textMuted, letterSpacing: 1.5, display: "block", marginBottom: 8 }}>LENGTH</label>
+              <label style={{ fontSize: 11, color: C.textMuted, letterSpacing: 1.5, display: "block", marginBottom: 8 }}>{t.length}</label>
               <div style={{ display: "flex", gap: 8 }}>
                 {LENGTHS.map((l) => (
                   <button key={l} onClick={() => setLength(l)} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: `1px solid ${length === l ? C.accent : C.border}`, background: length === l ? `${C.accent}20` : "transparent", color: length === l ? C.accent : C.textSub, fontSize: 12, cursor: "pointer" }}>
-                    {l}
+                    {lengthLabels[l]}
                   </button>
                 ))}
               </div>
@@ -131,19 +126,18 @@ export default function CopyStudioPage() {
           </div>
 
           <div style={{ marginBottom: 20 }}>
-            <label style={{ fontSize: 11, color: C.textMuted, letterSpacing: 1.5, display: "block", marginBottom: 8 }}>CAMPAIGN BRIEF</label>
-            <textarea value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="What is this post about? e.g. Launching new spring collection — flowing linen dresses in neutral tones, perfect for the Italian summer..." rows={5} style={{ width: "100%", background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px", color: C.text, fontSize: 13, resize: "vertical", boxSizing: "border-box" }} />
+            <label style={{ fontSize: 11, color: C.textMuted, letterSpacing: 1.5, display: "block", marginBottom: 8 }}>{t.campaignBrief}</label>
+            <textarea value={brief} onChange={(e) => setBrief(e.target.value)} placeholder={t.campaignBriefPlaceholder} rows={5} style={{ width: "100%", background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px", color: C.text, fontSize: 13, resize: "vertical", boxSizing: "border-box" }} />
           </div>
 
           <button onClick={generate} disabled={loading || !brief} style={{ width: "100%", padding: 14, background: loading ? C.accentDim : C.accent, border: "none", borderRadius: 8, color: "#000", fontSize: 14, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer" }}>
-            {loading ? "Generating..." : "✦  Generate Copy"}
+            {loading ? t.generating : t.generateCopyBtn}
           </button>
         </div>
 
-        {/* Right: Result */}
         <div>
           <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, minHeight: 300 }}>
-            <div style={{ fontSize: 11, color: C.textMuted, letterSpacing: 1.5, marginBottom: 16 }}>GENERATED COPY</div>
+            <div style={{ fontSize: 11, color: C.textMuted, letterSpacing: 1.5, marginBottom: 16 }}>{t.generatedCopy}</div>
             {loading && (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {[100, 85, 90, 70].map((w, i) => (
@@ -156,13 +150,13 @@ export default function CopyStudioPage() {
                 <p style={{ color: C.text, fontSize: 14, lineHeight: 1.8, margin: 0, whiteSpace: "pre-wrap" }}>{result}</p>
                 <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
                   <button onClick={handleCopy} style={{ flex: 1, padding: 10, background: "transparent", border: `1px solid ${C.border}`, borderRadius: 8, color: copied ? C.success : C.textSub, fontSize: 13, cursor: "pointer" }}>
-                    {copied ? "✓ Copied" : "Copy"}
+                    {copied ? t.copied : t.copy}
                   </button>
                   <button onClick={handleSave} disabled={saved} style={{ flex: 1, padding: 10, background: saved ? `${C.success}20` : `${C.accent}20`, border: `1px solid ${saved ? C.success : C.accent}40`, borderRadius: 8, color: saved ? C.success : C.accent, fontSize: 13, cursor: "pointer" }}>
-                    {saved ? "✓ Saved" : "Save to Library"}
+                    {saved ? t.saved : t.saveToLibrary}
                   </button>
                   <button onClick={generate} style={{ flex: 1, padding: 10, background: "transparent", border: `1px solid ${C.border}`, borderRadius: 8, color: C.textSub, fontSize: 13, cursor: "pointer" }}>
-                    Regenerate
+                    {t.regenerate}
                   </button>
                 </div>
               </div>
@@ -170,12 +164,13 @@ export default function CopyStudioPage() {
             {!loading && !result && (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 200, color: C.textMuted, fontSize: 13 }}>
                 <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.3 }}>✦</div>
-                Your copy will appear here
+                {t.copyWillAppear}
               </div>
             )}
           </div>
         </div>
       </div>
+      <style>{`@keyframes pulse { 0%,100%{opacity:0.3} 50%{opacity:0.7} }`}</style>
     </div>
   );
 }
