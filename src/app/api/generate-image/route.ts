@@ -1,14 +1,13 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
-export const maxDuration = 60; // Extend to 60s for Vercel Pro, 10s for Hobby
+export const maxDuration = 60;
 
 async function generateWithGemini(prompt: string, apiKey: string) {
   const models = [
     "gemini-2.0-flash-preview-image-generation",
     "gemini-2.0-flash-exp-image-generation",
   ];
-
   for (const model of models) {
     try {
       const response = await fetch(
@@ -33,29 +32,12 @@ async function generateWithGemini(prompt: string, apiKey: string) {
       }
     } catch (e) { continue; }
   }
-
-  // Try Imagen 3
-  const imagenResponse = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        instances: [{ prompt }],
-        parameters: { sampleCount: 1, aspectRatio: "1:1", personGeneration: "allow_adult" },
-      }),
-    }
-  );
-  const imagenData = await imagenResponse.json();
-  if (imagenData.predictions?.[0]?.bytesBase64Encoded) {
-    return { image: imagenData.predictions[0].bytesBase64Encoded, mimeType: "image/png" };
-  }
   throw new Error("Gemini image generation requires billing. Please enable at console.cloud.google.com or use Replicate.");
 }
 
 async function generateWithReplicate(prompt: string, apiKey: string) {
-  // Use fast SDXL-turbo model — generates in ~5 seconds
-  const response = await fetch("https://api.replicate.com/v1/models/bytedance/sdxl-lightning-4step/predictions", {
+  // Use the standard predictions endpoint with black-forest-labs/flux-schnell — very fast (~3s)
+  const response = await fetch("https://api.replicate.com/v1/predictions", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
@@ -63,48 +45,43 @@ async function generateWithReplicate(prompt: string, apiKey: string) {
       "Prefer": "wait=55",
     },
     body: JSON.stringify({
+      version: "black-forest-labs/flux-schnell",
       input: {
-        prompt: prompt,
-        width: 1024,
-        height: 1024,
+        prompt,
         num_outputs: 1,
-        num_inference_steps: 4,
-        guidance_scale: 0,
-        scheduler: "K_EULER",
+        aspect_ratio: "1:1",
+        output_format: "png",
+        output_quality: 90,
+        go_fast: true,
       },
     }),
   });
 
   const prediction = await response.json();
-
   if (prediction.error) throw new Error(prediction.error);
 
-  // If completed immediately
+  // Completed immediately
   if (prediction.output?.[0]) {
-    const imageUrl = prediction.output[0];
-    const imgResponse = await fetch(imageUrl);
+    const imgResponse = await fetch(prediction.output[0]);
     const buffer = await imgResponse.arrayBuffer();
-    const base64 = Buffer.from(buffer).toString("base64");
-    return { image: base64, mimeType: "image/png" };
+    return { image: Buffer.from(buffer).toString("base64"), mimeType: "image/png" };
   }
 
-  // Poll up to 50 seconds
+  // Poll
   const predictionId = prediction.id;
-  if (!predictionId) throw new Error("No prediction ID returned from Replicate.");
+  if (!predictionId) throw new Error("No prediction ID from Replicate. Check API key.");
 
-  for (let i = 0; i < 20; i++) {
-    await new Promise(r => setTimeout(r, 2500));
-    const pollResponse = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
+  for (let i = 0; i < 25; i++) {
+    await new Promise(r => setTimeout(r, 2000));
+    const poll = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
       headers: { "Authorization": `Bearer ${apiKey}` },
     });
-    const pollData = await pollResponse.json();
+    const pollData = await poll.json();
 
     if (pollData.status === "succeeded" && pollData.output?.[0]) {
-      const imageUrl = pollData.output[0];
-      const imgResponse = await fetch(imageUrl);
+      const imgResponse = await fetch(pollData.output[0]);
       const buffer = await imgResponse.arrayBuffer();
-      const base64 = Buffer.from(buffer).toString("base64");
-      return { image: base64, mimeType: "image/png" };
+      return { image: Buffer.from(buffer).toString("base64"), mimeType: "image/png" };
     }
     if (pollData.status === "failed") throw new Error(pollData.error || "Replicate generation failed.");
   }
@@ -118,7 +95,6 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   const { prompt, provider = "replicate" } = body;
-
   if (!prompt) return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
 
   try {
